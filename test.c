@@ -25,8 +25,8 @@ void printchars();
 
 int main(void)
 {
-    //testfunctions();
-    printchars();
+    testfunctions();
+    //printchars();
 }
 
 ///ASCII table

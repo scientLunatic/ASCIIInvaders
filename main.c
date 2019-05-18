@@ -27,9 +27,13 @@ enum
     ENTER     = 13,
     KEY_DIRECTION = -32,
     KEY_UP    = 72,
+    UP_INT    = 296,
     KEY_LEFT  = 75,
+    LEFT_INT  = 299,
     KEY_RIGHT = 77,
+    RIGHT_INT = 301,
     KEY_DOWN  = 80,
+    DOWN_INT  = 304,
     SPACEBAR  = 32,
 
     DEFAULT_WINDOW_WIDTH = 79,
@@ -95,6 +99,20 @@ int main()
 ///game loop
 void game()
 {
+    /*
+    int *arr = malloc(15 * sizeof(int)), i, size = 15;
+    memcpy(arr, (int[]){0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 9}, (15 * sizeof(int)));
+
+    for(i = 0; i < 15; i++){
+        printf("%d ", arr[i]);
+    }printf("\n");
+
+    int offset1 = 0, offset2 = 1;//if offset1 != 0 and is equal to offset2, just realloc? it is going to overwrite )
+    memcpy(arr + offset1, arr + offset2, (size - offset2) * sizeof(int));
+    size -= offset2;
+    realloc(arr, arr, );
+
+    return 0;*/
     image bg;
     image full;
 
@@ -147,19 +165,20 @@ void game()
         {
             case 0:
                 break;
-            case 1:
-            case 2:
+            case ESC:
+            case 'x':
                 stay = !stay;
                 break;
-            case 3:
-            case 7:
+            case 'd':
+            case RIGHT_INT:
                 pPos.x = (pPos.x+1 < 77)? pPos.x+1: pPos.x;
                 break;
-            case 4:
-            case 8:
+            case 'a':
+            case LEFT_INT:
                 pPos.x = (pPos.x-1 > 0)? pPos.x-1: pPos.x;
                 break;
-            case 6:
+            case SPACEBAR:
+            case UP_INT:
                 realloc(sPos, sizeof(point)*(sNum+1));                      //realloc set location and increment sNum
                 sPos[sNum].x = pPos.x + 1;
                 sPos[sNum].y = pPos.y;
@@ -212,7 +231,7 @@ void game()
                 }
             }
         }
-        else break;
+        else break;//no free?
         //rewrite shot collision and travel
         if(sNum != 0)                                                       //there is a bullet
         {
@@ -268,36 +287,36 @@ int logic(char* mode, char* arg)
         if(kbhit())
         {
             char key = getch();
-            switch(key)
+            switch(key)             //not case sensitive
             {
                 case ESC:
-                    return 1;
+                    return ESC;
                 case 'x':
                 case 'X':
-                    return 2;
+                    return 'x';
                 case 'd':
                 case 'D':
-                    return 3;
+                    return 'd';
                 case 'a':
                 case 'A':
-                    return 4;
+                    return 'a';
                 case ENTER:
-                    return 5;
+                    return ENTER;
                 case 'e':
                 case 'E':
                 case SPACEBAR:
-                    return 6;
+                    return SPACEBAR;
                 case KEY_DIRECTION:
                     switch(key = getch())
                     {
                         case KEY_RIGHT:
-                            return 7;
+                            return RIGHT_INT;//7
                         case KEY_LEFT:
-                            return 8;
+                            return LEFT_INT;//8
                         case KEY_UP:
-                            return 6;
+                            return UP_INT;//6
                         case KEY_DOWN:
-                            return 2;
+                            return DOWN_INT;//2
                     }
                 default:
                     return 9;
@@ -437,12 +456,12 @@ void menu(){
         {
             case 0:
                 break;
-            case 1:
-            case 2:
+            case ESC:
+            case 'x':
                 stay = !stay;
                 break;
-            case 3:
-            case 7:
+            case 'd':
+            case RIGHT_INT:
 
                 if(option == 2){
                     changeC(opts[option], opts[0]);
@@ -452,8 +471,8 @@ void menu(){
                     option++;
                 }break;
 
-            case 4:
-            case 8:
+            case 'a':
+            case LEFT_INT:
 
                 //if(option-1 == -1){ WHAT THE HELL
                 if(!option){
@@ -464,8 +483,8 @@ void menu(){
                     option--;
                 }break;
 
-            case 5:
-            case 6:
+            case ENTER:
+            case SPACEBAR:
                 switch(option)
                 {
                     case 0:
@@ -574,7 +593,7 @@ void credits(char** menu, FILE* cred)
         display(credits, 24, 80);                                       //call render function
         delay(170);                                                     //menu roll speed
         int quit;                                                       //variable that holds the logic evaluation of key press
-        if((quit = logic("eval_key", NULL)) == 1 || quit == 2)          //check if user pressed ESC or X
+        if((quit = logic("eval_key", NULL)) == ESC || quit == 'x')      //check if user pressed ESC or X
             break;                                                      //quit loop
     }
 
