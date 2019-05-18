@@ -1,0 +1,9 @@
+# depslib dependency file v1.0
+1557449230 source:e:\#extra\asciiinvaders\ascii_invaders\icon.rc
+
+1557459806 source:e:\#extra\asciiinvaders\ascii_invaders\list.c
+	"list.h"
+
+1557459549 e:\#extra\asciiinvaders\ascii_invaders\list.h
+	<stdlib.h>
+

@@ -1,605 +1,691 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <math.h>
-#include <limits.h>
 #include <string.h>
-#include <stdbool.h>
 #include <conio.h>
 #include <stdarg.h>
-#include "misc.h"
-#include "image.h"
+#include <math.h>
+#include <time.h>
+#include "list.h"
 
-//signatures data declarations and nesting 'trees'
+#define PROMPT_WIDTH 80
+#define PROMPT_HEIGHT 24
+#define PROMPT_SIZE 1920
+#define printflush(...) printf(__VA_ARGS__); fflush(stdout)
+#define WAITFORINPUT 1
+#define NOINPUTBLOCK 0
+#define SUCCESS 1
+#define FAILURE 0
+#define CAUTION -1
 
-#define LBLOCK '\xb0'
-#define MBLOCK '\xb1'
-#define DBLOCK '\xb2'
-#define BBLOCK '\xdb'
-#define UPERHALF '\xdc'
-#define LOWERHALF '\xdf'
-#define BLANK '\xff'
+typedef char* String;
+typedef String Phrase[];
+typedef String* wordSoup;
+typedef void* ViP;
+typedef void* voidParr[];
+typedef void** voidPP;
+typedef void (*funPtr)(void*);
 
+typedef struct {
+    char color[3];//{<0...f>, <0...f>, null}
+    int delay;//delay at game
+    int enemy_wait;//enemy wait cycles
+    int shot_velocity;
+    int enemy_number;
+    //control configuration
+}SETTINGS;
 
-//key and defaults mnemonic setting
-enum
+SETTINGS settings = {"0a", 10, 8, 1, 40};
+
+typedef struct {
+    int width;
+    int height;
+}DIMENSIONS;
+
+typedef struct {
+    int x;
+    int y;
+}COORD;
+
+typedef struct IMAGE{
+    String data;
+    union{
+        struct{
+            int width;
+            int height;
+        };
+        DIMENSIONS d;
+    };
+}IMAGE;
+
+typedef struct SPRITE{
+    IMAGE i;
+    union{
+        struct{
+            int x;
+            int y;
+        };
+        COORD pos;
+    };
+}SPRITE;
+
+IMAGE screen;
+
+enum cfg_code
 {
-    ESC       = 27,
-    ENTER     = 13,
-    KEY_DIRECTION = -32,
-    KEY_UP    = 72,
-    UP_INT    = 296,
-    KEY_LEFT  = 75,
-    LEFT_INT  = 299,
-    KEY_RIGHT = 77,
-    RIGHT_INT = 301,
-    KEY_DOWN  = 80,
-    DOWN_INT  = 304,
-    SPACEBAR  = 32,
-
-    DEFAULT_WINDOW_WIDTH = 79,
-    DEFAULT_WINDOW_HEIGHT = 24
+    LOAD,
+    UPDATE
 };
 
-//char matrix of N size
-//left-upper corner, diagonal offset from elements's [0][0].
-//right-upper corner, column number.
-//left-lower corner, line number
-/*right-lower corner, matrix column and line number product.->\
-//could become the offset's offset from the diagonal.          |
-//(0 = diag, n>0 = line over col, n<0 = col over line)       */
-
-typedef struct list list;
-struct list{
-    void* element;
-    list* next;
+enum key_alias
+{
+    ENTER   = 13,
+    ESC     = 27,
+    SPACE   = 32,
+    HOME    = 57415,
+    UP             ,
+    PGUP           ,
+    LEFT    = 57419,
+    RIGHT   = 57421,
+    DOWN    = 57424,
+    END_K   = 57423,
+    PGDOWN  = 57425,
+    INS            ,
+    DEL
 };
 
-
-///Loads initial screen where none is present, ergo: initializes display.
-///An proper equivalent should be a load() of the background.txt merged with border.txt
-void initDisp(image* init)
+enum program_states
 {
-    image borders;
+    NONE,
+    ERRORFLG,
+    LOADMENU,
+    LOADGAME,
+    GAMEOVER,
+    MATCHWON,
+    LOADOPTI,
+    SHOWCRED,
+    FINISHFL,
+    DEBUGFLG,
+    CONTINUE
+};
 
-    load(fopen("./files/background.txt", "r"), init);
-    load(fopen("./files/border.txt", "r"), &borders);
-    mergeImg(*init, borders, init, 0, 0);
-    clear(&borders);
+//!--------------------
+//misc.
+int min(int a, int b);
+int max(int a, int b);
+void dump(void);
+int gen();//!< accessory function, variable contents, test and temporary results.
+void delay(unsigned int mseconds);
+SPRITE* spawn(String req);//!< create new sprite
+int despawn(SPRITE* sp);
+SPRITE* findByCoord(LIST* sprList, int x, int y, int* index);
+
+//!--------------------
+//char matrix images;
+IMAGE weavPat;      //weave pattern
+IMAGE noPat;        //"blank" bg
+IMAGE border;       //
+IMAGE inv;          //invaders icon
+IMAGE cool;         //weird ring thing
+IMAGE titleScreen;  //take a guess
+IMAGE cred;         //biscuit recipe.
+IMAGE optScreen;    //after render option screen
+//screen is above, if you can't find it.
+
+//!----------------------
+//image manipulation
+int loadImg(FILE* f, IMAGE* tgt, int w, int h);
+int copyImg(IMAGE* cpy, IMAGE* src);
+int overlay(IMAGE* out, IMAGE* top);//!< 'out', with the same dimensions is rewritten with 'top' on top of it. Ignores spaces.
+int olayOffset(IMAGE* out, IMAGE* top, int hoff, int voff);
+int olayCenter(IMAGE* out, IMAGE* top, int voff);
+
+//!--------------------
+//drawing functions
+void weave();
+void invader();
+void display(funPtr fun, void* arg);
+void dispSiz(IMAGE* img);
+
+//!--------------------
+//setup functions
+
+void loadMenu(void);
+void loadCred(void);
+void loadGame(void);
+void loadEndLose(void);
+void loadEndWin(void);
+void loadOpti(void);
+
+
+//!--------------------
+//contexts
+int control(int lockF);//!< merely in-line reading is OK but this allows me to return arbitrary ints to any reading strategy
+void updateOptions(int op);
+int options();
+int menu();//!< menu with options to start the game, see the credits and configure(ideally color, controls, speed, difficulty(?))
+int game();
+int end();
+int credits();
+int init();
+int finish();
+int main_loop();//!< loop to control states on the program, the whole flow.
+
+//!--------------------
+//meta-programming
+String whatFunc(void* fptr);//!< ask main_loop which context is running.
+
+//!--------------------
+//program meta data
+char buffer[PROMPT_SIZE] = {0};
+voidParr __gfa = {game, menu, finish};      //!<references
+Phrase   __gfn = {"game", "menu", "finish"};//!<names
+int      __gfc = 3;                         //!<count
+
+String whatFunc(void* fptr)         //!<self-awareness is awesome
+{
+    voidPP funcs;
+    wordSoup fnames;
+    funcs = __gfa; fnames = __gfn;
+    int i, siz = __gfc;
+    for(i = 0; i < siz; i++){
+        if(funcs[i] == fptr)
+            return fnames[i];
+    }
+    return "!NO MATCH!";
 }
 
+int min(int a, int b){
+    return(a < b)? a: b;
+}
 
-void menu();
-    image initMen(size_t cols, size_t lines);
+int max(int a, int b){
+    return(a > b)? a: b;
+}
 
-    void options();
-    void credits(char** menu, FILE* cred);
-    void game();
-        int logic(char* mode, char* arg);
+void dump(void)
+{
+    while(kbhit()) getch();
+}
 
+int gen()
+{
+    //FILE* f = fopen("files/cool.txt", "rb");
+    //String inv = calloc(55, sizeof(char));
+    //while(fgets(inv, 54, f))
+    //  printf("%s\n", inv);
+    //fclose(f);
+    putc(255, stdout);
+    return FINISHFL;
+}
+
+void delay(unsigned int mseconds)
+{
+    clock_t goal = mseconds + clock();
+    while (goal > clock());
+}
+
+SPRITE* spawn(String req)
+{//AKA playing scribblenauts with the engine.
+    char opt = ((!strcmp(req, "player"))<<2) + ((!strcmp(req, "enemy"))<<1) + (!strcmp(req, "shot"));
+    if(opt){
+        SPRITE* sp = malloc(sizeof(SPRITE));
+        sp->pos = (COORD){0, 0};
+        switch(opt)
+        {
+            case 0b1:   sp->i.data = calloc(2, sizeof(char));
+                        strcpy(sp->i.data, "^");
+                        sp->i.d = (DIMENSIONS){1, 1};
+                        break;
+            case 0b10:  sp->i.data = calloc(3, sizeof(char));
+                        strcpy(sp->i.data, "\xd5\xcb\xb8");
+                        sp->i.d = (DIMENSIONS){3, 1};
+                        break;
+            case 0b100: sp->i.data = calloc(4, sizeof(char));
+                        strcpy(sp->i.data, "\xd6\xc1\xb7");
+                        sp->i.d = (DIMENSIONS){3, 1};
+                        break;
+        }
+        return sp;
+    }
+    return NULL;
+}
+
+int despawn(SPRITE* sp)
+{
+    if(sp){
+        free(sp->i.data);
+        free(sp);
+        return SUCCESS;
+    }return CAUTION;
+}
+
+SPRITE* findByCoord(LIST* sprList, int x, int y, int* index)
+{
+    int i;
+    LIST_NODE* it;
+    SPRITE* hold;
+    for_each_list(it, sprList, i){
+        hold = it->el;
+        if((y >= hold->y) && (y < (hold->y + hold->i.height)))
+            if((x >= hold->x) && (x < (hold->x + hold->i.width))){
+                *index = i;
+                return hold;
+            }
+    }
+    return NULL;
+}
+
+int loadImg(FILE* f, IMAGE* tgt, int w, int h)
+{
+    *tgt = (IMAGE){calloc(w*h + 1, sizeof(char)), .d = (DIMENSIONS){w, h}};
+    if(!f) return -1;
+
+    fgets(tgt->data, w*h + 1, f);
+    fclose(f);
+    return 0;
+}
+
+int copyImg(IMAGE* cpy, IMAGE* src)
+{
+    int siz = src->width*src->height;
+    free(cpy->data); cpy->data = NULL;
+    *cpy = (IMAGE){memcpy(malloc((siz + 1) * sizeof(char)), src->data, siz), .d = src->d};
+    return 0;
+}
+
+int overlay(IMAGE* out, IMAGE* top)
+{
+    int i, j,
+        w = min(out->width, top->width),    //|trim
+        h = min(out->height, top->height),  //|
+        c, outpos, toppos;
+
+    for(i = 0; i < h; i++)
+        for(j = 0, outpos = (i * out->width) + j, toppos = (i * top->width) + j; j < w; j++, outpos++, toppos++)
+            out->data[outpos] = (((c = top->data[toppos]) == ' ') ? out->data[outpos]: c);
+
+    return 0;
+}
+
+int olayOffset(IMAGE* out, IMAGE* top, int hoff, int voff)
+{
+    int i, j,
+    //!there we go again
+    #define THINGAMAJIG(dim, doff) min(out->dim,  (top->dim  + min(doff, 0) + out->dim  - min(max(out->dim,  doff + top->dim ), (top->dim  + out->dim ))))
+    w = THINGAMAJIG(width, hoff),
+    h = THINGAMAJIG(height, voff),
+    #undef THINGAMAJIG
+    c, outpos, toppos;
+    /*intersection is:                 limited by size of out and top
+    //                                    min(out->dim, <top->dim>)
+    //                                   reduced by negative values
+    //                                     top->dim + min(doff, 0)
+    //                                              and
+    //                      reduced by values that push against the far corners
+    //        top->dim + out->dim - min(max(out->dim, doff + top->dim), (top->dim + out->dim))
+    //   (if((doff + top->dim) > out->dim), how much it is greater is how much top->dim is smaller)
+    */
+    for(i = 0; i < h; i++)
+        for(j = 0, outpos = ((i + max(0, voff)) * out->width) + j + max(0, hoff),
+                   toppos = ((i - min(0, voff)) * top->width) + j - min(0, hoff); j < w; j++, outpos++, toppos++)
+            out->data[outpos] = (((c = top->data[toppos]) == ' ') ? out->data[outpos]: c);
+
+    return 0;
+}
+
+int olayCenter(IMAGE* out, IMAGE* top, int voff)
+{
+    int hoff = out->width/2 - top->width/2;
+    olayOffset(out, top, hoff, voff);
+    return SUCCESS;
+}
+
+void weave()
+{
+    if(strlen(weavPat.data) == 0) exit(0);
+    printf("%s", weavPat.data);
+}
+
+void invader()
+{
+    if(strlen(inv.data) == 0) exit(0);
+    int i;
+    for(i = 0; i < inv.height; i++, putc('\n', stdout))
+        fprintf(stdout, "%.*s", inv.width, inv.data + i*inv.width);
+}
+
+void display(funPtr fun, void* arg)
+{
+    system("cls");
+    fun(arg);
+    fflush(stdout);
+}
+
+void dispSiz(IMAGE* img)
+{
+    if(strlen(img->data) == 0) exit(EXIT_FAILURE);
+    int i, h = min(img->height, PROMPT_HEIGHT),
+           w = min(img->width, PROMPT_WIDTH),
+        crop = (w < PROMPT_WIDTH);
+    for(i = 0; i < h; i++, crop && putc('\n', stdout))
+        fprintf(stdout, "%.*s", w, &img->data[i * img->width]);
+}
+
+void loadGame()
+{
+    copyImg(&screen, &noPat);//changing bg means changing hit detection.
+}
+
+void loadEndLose()
+{
+    IMAGE gmovr = {"\
+\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\
+\xffGAME\xffOVER\xff\
+\xffYOU\xff\xffLOST\xff\
+\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff", .d = {11, 4}};
+    olayCenter(&screen, &gmovr, screen.height/2);
+}
+
+void loadEndWin()
+{
+    copyImg(&screen, &noPat);
+    IMAGE gmwin = {"YOU\xffWON!", .d = {8, 1}};
+    olayCenter(&screen, &gmwin, screen.height/2);
+}
+
+void loadMenu()
+{
+    copyImg(&screen, &titleScreen);
+}
+
+void loadOpti()
+{
+    return;
+}
+
+void showCred()
+{
+    copyImg(&screen, &titleScreen);//could be another bg
+}
+
+int control(int lockF)
+{
+    int k;
+    if(lockF || kbhit())
+        return ((k = getch()) != 224)? k : (k<<8) + getch();
+    else return 0;
+}
+
+void updateOptions(int op)
+{
+    switch(op){
+        case LOAD:
+            {
+                char cmd[9];
+                sprintf(cmd, "color %s", settings.color);
+                system(cmd);
+            }
+            break;
+        case UPDATE:
+            break;
+    }
+}
+
+int options()
+{
+    printflush("Nothing here yet");
+    control(WAITFORINPUT);
+    return LOADMENU;
+}
+
+int credits()
+{
+    int i;
+    for(i = screen.height; i > -(cred.height); i--){
+        copyImg(&screen, &titleScreen);
+        olayCenter(&screen, &cred, i);
+        display((funPtr)dispSiz, (ViP)&screen);
+        switch(control(NOINPUTBLOCK))
+        {
+            case ESC:
+            case ENTER:
+                return LOADMENU;
+        }
+        delay(88);
+    }return LOADMENU;
+}
+
+int menu()
+{
+    int opts[3][2];
+    static int selected = 0;
+    {//It's here because I need it to be close to the input handling to change it quickly
+        int i;
+        Phrase titles = {"Start", "Options", "Credits"};
+        int sizes[] = {5, 7, 7};
+        for(i = 0; i < 3; i++)
+        {
+            IMAGE temp = (IMAGE){titles[i], .d = {sizes[i], 1}};
+            olayOffset(&titleScreen, &temp, opts[i][0] = (i + 1)*titleScreen.width/4 - temp.width/2, opts[i][1] = titleScreen.height - 3);
+        }
+    }
+    while(1){
+        copyImg(&screen, &titleScreen);
+        screen.data[opts[selected][1] * screen.width + opts[selected][0] - 1] = '\xb2';
+        display((funPtr)dispSiz, (ViP)&screen);
+        int k;
+        switch(k = control(WAITFORINPUT))
+        {
+            case LEFT  : selected = (selected + 2) % 3; break;
+            case RIGHT : selected = (selected + 1) % 3; break;
+            case ESC   : return FINISHFL;
+            case ENTER :
+                switch(selected)
+                {
+                    case 0: return LOADGAME;
+                    case 1: return LOADOPTI;
+                    case 2: return SHOWCRED;
+                }
+        }
+    }
+}
+
+int game()
+{//add scores
+    int i, j, running = 1, retval = LOADMENU,
+        shotVel = settings.shot_velocity,//Shot velocity
+        nmyWait = settings.enemy_wait,//Turns enemies wait
+        nmyTurn = 0;
+    LIST *foes = new_list(), *shots = new_list();
+    for(i = 0; i < settings.enemy_number; i++){
+        SPRITE* enemy = spawn("enemy");
+        enemy->pos = (COORD){(i%10 + 1) * screen.width/11 - enemy->i.width/2, 3*(i/10) + 4};
+        lpush(foes, enemy);
+    }
+    SPRITE* player = spawn("player");
+    player->pos = (COORD){screen.width/2, screen.height - 1};
+    while(running)
+    {
+        copyImg(&screen, &noPat);
+        LIST_NODE* item;
+        SPRITE* hold;
+
+        for_each_list(item, foes, i){
+            hold = (SPRITE*)item->el;
+            if(nmyTurn == nmyWait - 1)
+                hold->y = (hold->y % 2)? ((hold->x == 0)? ++hold->y: hold->x--, hold->y):
+                                         ((hold->x == screen.width - hold->i.width)? ++hold->y: hold->x++, hold->y);
+            if(hold->y == screen.height - player->i.height) {running = 0; break;}
+            olayOffset(&screen, &(hold->i), hold->x, hold->y);
+        }if(running == 0){retval = GAMEOVER; break;}
+         nmyTurn = (nmyTurn + 1) % nmyWait;
+
+        for_each_list(item, shots, i){
+            hold = (SPRITE*)item->el;
+            olayOffset(&screen, &(hold->i), hold->x, hold->y);
+            //check hit & move shot
+            for(j = (hold->y - 1); (j >= 0) && (j >= hold->y - shotVel); j--)
+                if(screen.data[j * screen.width + hold->x] != '\xb0')
+                {
+                    int t, e;
+                    SPRITE* Nmy;
+                    Nmy = findByCoord(foes, hold->x, j, &e);
+                    if(Nmy) lrem(foes, e);
+                    despawn(Nmy);
+
+                    lfind(shots, hold, &t);
+                    lrem(shots, t);
+                    despawn(hold);
+                }
+                    //printflush("hit");
+            hold->y = hold->y - shotVel;
+            if(hold->y < 0) {
+                int t;
+                lfind(shots, hold, &t);
+                lrem(shots, t);
+                despawn(hold);
+            }
+        }if(foes->length == 0){retval = MATCHWON; break;}
+
+        olayOffset(&screen, &player->i, player->x, player->y);
+        display((funPtr)dispSiz, (ViP)&screen);
+        switch(control(NOINPUTBLOCK))
+        {
+            case LEFT  : player->x = ((player->x) > 0)?
+                                       player->x - 1: player->x;
+                        break;
+            case RIGHT : player->x = ((player->x) < screen.width - player->i.width)?
+                                       player->x + 1: player->x;
+                        break;
+            case ENTER : hold = spawn("shot");
+                         hold->pos = (COORD){player->pos.x + player->i.width/2, player->pos.y - 1};
+                         lpush(shots, hold);
+                        break;
+            case HOME:  return DEBUGFLG;
+            case ESC:   running = 0;
+        }delay(settings.delay);
+    }
+    while(foes->length) despawn((SPRITE*)lpop(foes));
+    while(shots->length) despawn((SPRITE*)lpop(shots));
+    free(foes); free(shots);
+    despawn(player);
+    return retval;
+}
+
+int end()
+{
+    display((funPtr)dispSiz, (ViP)&screen);
+    delay(20);
+    dump();
+    control(WAITFORINPUT);
+    return LOADMENU;
+}
+
+int init()
+{//load files into buffers and set the console buffer to "big enough"
+    loadImg(fopen("files\\weaveBG.txt", "rb"), &weavPat, PROMPT_WIDTH, PROMPT_HEIGHT);
+    loadImg(fopen("files\\invader.txt", "rb"), &inv, 22, 8);
+    loadImg(fopen("files\\cool.txt", "rb"), &cool, 53, 34);
+    loadImg(fopen("files\\background.txt", "rb"), &noPat, PROMPT_WIDTH, PROMPT_HEIGHT);
+    loadImg(fopen("files\\border.txt", "rb"), &border, PROMPT_WIDTH, PROMPT_HEIGHT);
+    loadImg(fopen("files\\titleScreen.txt", "rb"), &titleScreen, PROMPT_WIDTH, PROMPT_HEIGHT);
+    loadImg(fopen("files\\credits.txt", "rb"), &cred, 42,37);
+    updateOptions(LOAD);
+
+    setvbuf(stdout, buffer, _IOFBF, sizeof(buffer));
+    return LOADMENU;
+}
+//keep init&finish together to counteract global var. trouble
+int finish()
+{//free global data and end normally
+    free(weavPat.data);
+    free(inv.data);
+    free(cool.data);
+    free(noPat.data);
+    free(border.data);
+    free(titleScreen.data);
+    free(cred.data);
+    free(screen.data);
+    return EXIT_SUCCESS;
+}
+
+int main_loop()//rename to control loop?
+{
+    int (*context)(void) = init;
+    int flag = NONE;
+    //context = gen;
+
+    while((flag = context()))
+        switch(flag)
+        {
+            case FINISHFL: return finish();
+            case LOADGAME: loadGame(); context = game; break;
+            case GAMEOVER: loadEndLose(); context = end; break;
+            case MATCHWON: loadEndWin(); context = end; break;
+            case LOADMENU: loadMenu(); context = menu; break;
+            case DEBUGFLG: printflush("Returning from %s\n", whatFunc(context)); break;
+            case SHOWCRED: showCred(); context = credits; break;
+            case LOADOPTI: loadOpti(); context = options; break;
+            case CONTINUE: break;
+            default: printflush("CODING ERROR, UNEXPECTED STATE\n");
+            case ERRORFLG: return EXIT_FAILURE;
+        }
+    printflush("CODING ERROR(?), FLAG IS NONE\nASSUMING YOU WANTED TO QUIT.\n");
+    return EXIT_SUCCESS;
+}
 
 int main()
 {
-
-    //use sparingly, this is dangerous.
-
-    char buffer[PROMPT_WIDTH*PROMPT_HEIGHT] = {0};
-    setvbuf(stdout, buffer, _IOFBF, sizeof(buffer));
-
-    //setvbuf() changes the buffer size so that printf() can write to the command window faster,
-    //but(in this case) it only prints with a fflush() or meeting the full 1896 chars on buffer size.
-    //It's a major improvement on speed.
-
-    logic("setting", "color");
-
-    menu();
-
-    return 0;
+    return main_loop();
 }
 
-///game loop
-void game()
+/*static void weave_old()
 {
-    /*
-    int *arr = malloc(15 * sizeof(int)), i, size = 15;
-    memcpy(arr, (int[]){0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 9}, (15 * sizeof(int)));
+    //checker background optimization, partly unrolled.
+    static const String weavPat = {"\
+\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\
+\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\
+\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\
+\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\
+\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\
+\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\
+\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\
+\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2\xb0\xb1\xb2"};
+    printf("%s%s", weavPat, weavPat);
+    printf("%s%s", weavPat, weavPat);
+    printf("%s%s", weavPat, weavPat);
+    printf("%s%s", weavPat, weavPat);
+    printf("%s%s", weavPat, weavPat);
 
-    for(i = 0; i < 15; i++){
-        printf("%d ", arr[i]);
-    }printf("\n");
+    fflush(stdout);
+}*/
 
-    int offset1 = 0, offset2 = 1;//if offset1 != 0 and is equal to offset2, just realloc? it is going to overwrite )
-    memcpy(arr + offset1, arr + offset2, (size - offset2) * sizeof(int));
-    size -= offset2;
-    realloc(arr, arr, );
-
-    return 0;*/
-    image bg;
-    image full;
-
-    load(fopen("./files/background.txt", "r"), &bg);
-    load(fopen("./files/background.txt", "r"), &full);
-
-    char* player = "\xDA\xC1\xBF";                                          //player 'sprite'
-    point pPos = {full.width/2-1, 23};                                      //place player on center of last line
-    char shot = '^';
-    point* sPos = NULL;
-    char enemy = '\xCA';                                                    //enemy 'sprite'
-    point* ePos = NULL;
-    int step = 1;
-
-    bool stay = true;                                                       //run game loop flag
-    int i, j, sNum = 0, eNum = 8;
-
-    ePos = calloc(eNum, sizeof(point));
-    sPos = calloc(1, sizeof(point));
-    for(i = 0; i < eNum; i++)
-    {
-        ePos[i].x = ((i % full.width)*full.width) / 8;                      //initialize enemy locations
-        ePos[i].y = (((int)i/full.width)*full.height) / 10;
-    }
-
-    centerCpy(full.elements[pPos.y], player);
-
-    while(stay && (eNum > 0))
-    {
-        checkFocus();
-
-        mergeImg(full, bg, &full, 0, 0);
-
-        strncpy(full.elements[pPos.y] + pPos.x, player, sizeof(player)-1);
-
-        for(i = 0; i < eNum; i++)
-            full.elements[ePos[i].y][ePos[i].x] = enemy;                        //place enemies on screen
-
-        if(sNum != 0)
-            for(i = 0; i < sNum; i++)
-                full.elements[sPos[i].y][sPos[i].x] = shot;                     //places shots on screen
-
-        display(full, 24, 80);
-        delay(10);
-
-        printf("sNum:%d|eNum:%d|sPos.x:%d|sPos.y:%d", sNum, eNum, sPos[sNum-1].x, sPos[sNum-1].y);
-        fflush(stdout);
-
-        switch(logic("eval_key", NULL))
-        {
-            case 0:
-                break;
-            case ESC:
-            case 'x':
-                stay = !stay;
-                break;
-            case 'd':
-            case RIGHT_INT:
-                pPos.x = (pPos.x+1 < 77)? pPos.x+1: pPos.x;
-                break;
-            case 'a':
-            case LEFT_INT:
-                pPos.x = (pPos.x-1 > 0)? pPos.x-1: pPos.x;
-                break;
-            case SPACEBAR:
-            case UP_INT:
-                realloc(sPos, sizeof(point)*(sNum+1));                      //realloc set location and increment sNum
-                sPos[sNum].x = pPos.x + 1;
-                sPos[sNum].y = pPos.y;
-                sNum++;
-                break;
-            default:
-                system("color 0C");                                         //unrecognized input
-                pause();
-                logic("setting", "color");
-        }
-
-        //rewrite enemy travel
-        if(eNum != 0)
-        {
-            for(i = 0; i < eNum; i++)
-            {
-                if((ePos[i].y & 1) != 0)                                    //
-                {
-                    if((ePos[i].x + step) < full.width - 1){
-                        ePos[i].x += step;
-                    }else if((ePos[i].y + 1) < (full.height-1)){
-                        ePos[i].y++;
-                    }
-                    else
-                    {
-                        for(j = i; j < eNum; j++)
-                        {
-                            ePos[j].x = ePos[j+1].x;
-                            ePos[j].y = ePos[j+1].y;
-                        }
-                        eNum--;
-                        ePos = realloc(ePos, sizeof(point)*(eNum));
-                    }
-                }else
-                {
-                    if((ePos[i].x - step) > 0)
-                        ePos[i].x -= step;
-                    else if((ePos[i].y + 1) < (full.height-1))
-                        ePos[i].y++;
-                    else
-                    {
-                        for(j = i; j < eNum; j++)
-                        {
-                            ePos[j].x = ePos[j+1].x;
-                            ePos[j].y = ePos[j+1].y;
-                        }
-                        eNum--;
-                        ePos = realloc(ePos, sizeof(point)*(eNum));
-                    }
-                }
-            }
-        }
-        else break;//no free?
-        //rewrite shot collision and travel
-        if(sNum != 0)                                                       //there is a bullet
-        {
-            for(i = 0; i < sNum; i++)                                       //for each bullet
-            {
-                if((sPos[i].y - step) > 0)
-                {
-                    for(j = 0; j < step; j++)                               //every tile between shot and destination
-                        if(full.elements[sPos[i].y-j][sPos[i].x] == enemy)  //if tile at bullet col and j row is an enemy
-                            ePos[i] = (point){2, full.height-2};            //enemy hit, destroy shot and enemy.
-                    sPos[i].y -= step;
-                }
-                else
-                {
-                    if(sNum > 1)
-                    {
-                        for(j = 0; j < sNum-1; j++)
-                        {
-                            sPos[j].x = sPos[j+1].x;
-                            sPos[j].y = sPos[j+1].y;                        //top of screen hit, destroy shot.(or the top of the screen, that would be fun).
-                        }
-
-                        sNum--;
-                        sPos = (point*)realloc(sPos, (sNum)*sizeof(point));
-                        printf("What I did:\n");
-                        for(j = 0; j < sNum-1; j++)
-                        {
-                            printf("\tShot %d:\n\t x:%d\n\t y:%d", j+1, sPos[j].x, sPos[j].y);
-                        }
-                        fflush(stdout);
-                    }
-                    else
-                    {
-                        sNum--;
-                        free(sPos);
-                        sPos = calloc(1, sizeof(point));
-                    }
-                }
-            }
-        }
-    }
-
-
-    clear(&bg);
-    clear(&full);
-}
-
-///Returns useful integers for logic and calls certain functions; takes processing mode and arguments.
-int logic(char* mode, char* arg)
+/*void loadMenu_old()
 {
-    if(!strcmp(mode, "eval_key"))
-    {
-        if(kbhit())
-        {
-            char key = getch();
-            switch(key)             //not case sensitive
-            {
-                case ESC:
-                    return ESC;
-                case 'x':
-                case 'X':
-                    return 'x';
-                case 'd':
-                case 'D':
-                    return 'd';
-                case 'a':
-                case 'A':
-                    return 'a';
-                case ENTER:
-                    return ENTER;
-                case 'e':
-                case 'E':
-                case SPACEBAR:
-                    return SPACEBAR;
-                case KEY_DIRECTION:
-                    switch(key = getch())
-                    {
-                        case KEY_RIGHT:
-                            return RIGHT_INT;//7
-                        case KEY_LEFT:
-                            return LEFT_INT;//8
-                        case KEY_UP:
-                            return UP_INT;//6
-                        case KEY_DOWN:
-                            return DOWN_INT;//2
-                    }
-                default:
-                    return 9;
-            }
-
-            dump();
-        }
-    }
-    if(!strcmp(mode, "setting"))
-    {
-        FILE* cfg = fopen("./files/settings.ini", "r+");
-        if(!strcmp(arg, "color"))
-        {
-            char* option = malloc(30);
-            while(fscanf(cfg, "%s", option) != EOF)
-                if(strcmp(option, "color"))
-                {
-                    fscanf(cfg, "%s", option);
-                        if(!strcmp(option, "matrix"))
-                        {
-                            option = "color 0A";
-                            system(option);
-                        }
-                        else if(!strcmp(option, "paper"))
-                        {
-                            option = "color 78";
-                            system(option);
-                        }
-                        else if(!strcmp(option, "turbo"))
-                        {
-                            option = "color 1E";
-                            system(option);
-                        }
-                        else if(!strcmp(option, "contrast"))
-                        {
-                            option = "color C9";
-                            system(option);
-                        }
-                        else if(!strcmp(option, "ice"))
-                        {
-                            option = "color 17";
-                            system(option);
-                        }
-                        else if(!strcmp(option, "scorpion"))
-                        {
-                            option = "color 0E";
-                            system(option);
-                        }
-                        else if(!strcmp(option, "camo"))
-                        {
-                            option = "color 26";
-                            system(option);
-                        }
-                        else if(!strcmp(option, "blood"))
-                        {
-                            option = "color 4C";
-                            system(option);
-                        }
-                        else if(!strcmp(option, "haunted"))
-                        {
-                            option = "color 40";
-                            system(option);
-                        }
-                        else if(!strcmp(option, "magic"))
-                        {
-                            option = "color 5C";
-                            system(option);
-                        }
-                        else if(!strcmp(option, "pimp"))
-                        {
-                            option = "color 5D";
-                            system(option);
-                        }
-                        else if(!strcmp(option, "gold"))
-                        {
-                            option = "color 6E";
-                            system(option);
-                        }
-                        else if(!strcmp(option, "ink"))
-                        {
-                            option = "color 80";
-                            system(option);
-                        }
-                        else if(!strcmp(option, "toxic"))
-                        {
-                            option = "color EA";
-                            system(option);
-                        }
-                        else if(!strcmp(option, "plutonium"))
-                        {
-                            option = "color A8";
-                            system(option);
-                        }
-                        else if(!strcmp(option, "focus"))
-                        {
-                            option = "color FC";
-                            system(option);
-                        }
-                        else
-                        {
-                            char* out = malloc(9);
-                            sprintf(out, "color %s\n", option);
-                            system(out);
-                            free(out);
-                        }
-                    free(option);
-                    fclose(cfg);
-                    return 1;
-                }
-            fclose(cfg);
-            free(option);
-            return 0;
-        }
-        fclose(cfg);
-    }
-    /*if(!strcmp(mode, "debug"))
-    {
-        if();
-    }*/
-    return 0;
-}
-
-///Calls and handles menu screen. Possibly, the logic and visual functions can be made to handle respective operations on scope.
-void menu(){
-    image title = initMen(80, 24);
-    char** opts = retrieveOptions(title.elements[21]+1, '\xB0', '|');
-    int option = 0;
-    *opts[option] = 178;
-
-    bool stay = true;
-
-    while(stay)
-    {
-        checkFocus();
-        display(title, 24, 80);
-        switch(logic("eval_key", NULL))
-        {
-            case 0:
-                break;
-            case ESC:
-            case 'x':
-                stay = !stay;
-                break;
-            case 'd':
-            case RIGHT_INT:
-
-                if(option == 2){
-                    changeC(opts[option], opts[0]);
-                    option = 0;
-                }else{
-                    changeC(opts[option], opts[option+1]);
-                    option++;
-                }break;
-
-            case 'a':
-            case LEFT_INT:
-
-                //if(option-1 == -1){ WHAT THE HELL
-                if(!option){
-                    changeC(opts[option], opts[2]);
-                    option = 2;
-                }else{
-                    changeC(opts[option], opts[option-1]);
-                    option--;
-                }break;
-
-            case ENTER:
-            case SPACEBAR:
-                switch(option)
-                {
-                    case 0:
-                        game();
-                        break;
-                    case 1:
-                        options();
-                        break;
-                    case 2:
-                        credits(title.elements, fopen("./files/credits.txt", "r"));
-                        break;
-                }
-                break;
-            default:
-                system("color 0C");
-                pause();
-                logic("setting", "color");
-        }
-        delay(33);
-    }
-    free(opts);
-    clear(&title);
-}
-
-
-///Returns a "simple" menu with given number lines and their respective prompts. Initializes menu.
-image initMen(size_t cols, size_t lines)
-{
-    image setup;
-
-    initDisp(&setup);
-
+    copyImg(&screen, &noPat);
+    overlay(&screen, &border);
+    olayCenter(&screen, &inv, 7);
 
     int i;
-    char* header[] = {"Space Invaders!","(a bootleg copy by a struggling student)","(\xA6u\xA6)","Eduardo Rodrigues Baldini Filho"};
-    char* options[] = {"Start game", "Options", "Credits"};
-
-    char* logo[] = {"\xDB\xDB\xB0\xB0\xB0\xB0\xB0\xB0\xB0\xB0\xB0\xB0\xDB\xDB",
-                    "\xDB\xDB\xB0\xB0\xB0\xB0\xB0\xB0\xDB\xDB",
-                    "\xDB\xDB\xDF\xDF\xDB\xDB\xDB\xDB\xDB\xDB\xDF\xDF\xDB\xDB",
-                    "\xDB\xDB\xDB\xDB\xDC\xDC\xDB\xDB\xDB\xDB\xDB\xDB\xDC\xDC\xDB\xDB\xDB\xDB",
-                    "\xDB\xDB\xDF\xDF\xDB\xDB\xDB\xDB\xDB\xDB\xDB\xDB\xDB\xDB\xDB\xDB\xDB\xDB\xDF\xDF\xDB\xDB",
-                    "\xDB\xDB\xB0\xB0\xDB\xDB\xDF\xDF\xDF\xDF\xDF\xDF\xDF\xDF\xDF\xDF\xDB\xDB\xB0\xB0\xDB\xDB",
-                    "\xDF\xDF\xB0\xB0\xDF\xDF\xDC\xDC\xDC\xDC\xB0\xB0\xDC\xDC\xDC\xDC\xDF\xDF\xB0\xB0\xDF\xDF",
-                    "\xDF\xDF\xDF\xDF\xB0\xB0\xDF\xDF\xDF\xDF"};
-
-    for(i = 0; i < 3; i++)
-        formatCpy(setup.elements[i], header+i, 1);
-    formatCpy(setup.elements[23], header+3, 1);
-
-    for(i = 0; i < 8; i++)
-        centerCpy(setup.elements[i+7], logo[i]);
-
-    formatCpy(setup.elements[21], options, 3);
-
-    return setup;
-}
-
-
-///TO DO: main menu options
-void options()
-{
-    logic("","");
-}
-
-
-///rolls credits on cred
-void credits(char** menu, FILE* cred)
-{
-    int credsize = 0, i, j, k = 1;
-
-    char** creds = (char**)malloc(sizeof(char*));
-    creds[credsize] = malloc(70);
-    while(fgets(creds[credsize], 70, cred) != NULL)
     {
-        if(creds[credsize][strlen(creds[credsize])-1] == '\n')
-            creds[credsize][strlen(creds[credsize])-1] = '\0';
-        credsize++;
-        creds = (char**)realloc(creds, (credsize+1)*sizeof(char*));
-        creds[credsize] = (char*)malloc(70);
-    }
-    *(creds+credsize) = NULL;
-
-    image credits = initMen(80, 24);
-    for(i = 0; i < 22+credsize-1; i++)                                  //credits roll loop
-    {
-        checkFocus();
-        for(j = 1; j < 23; j++)
-            strcpy(credits.elements[23-j], menu[23-j]);       //resets the screen
-
-        if(i < 22){
-
-            for(j = 0; j < k; j++)
-                centerCpy(credits.elements[22-i+j], creds[j]);          //loads first lines until screen is full with 'em
-            if(k < credsize)
-                k++;
-
-        }else{
-
-            for(j = 0; j < k-1; j++)
-                centerCpy(credits.elements[j+1], creds[(j+i-21)]);      //loads remaining lines and then fades when text hits top.
-            if((j+i-21) > (credsize-1))
-                k--;
-
+        Phrase titles = {"Space\xffinvaders!", "(a\377bootleg\377copy\377by\377a\377struggling\377student)",
+                         "(\xa6u\xa6)", "Eduardo\xffRodrigues\377Baldini\377Filho"};
+        int sizes[] = {15, 40, 5, 31};
+        for(i = 0; i < 4; i++){
+            {//extra brackets for scope delimitation of temp
+                IMAGE temp = (IMAGE){titles[i], .d = {sizes[i], 1}};
+                olayCenter(&screen, &temp, i);
+            }
         }
-        display(credits, 24, 80);                                       //call render function
-        delay(170);                                                     //menu roll speed
-        int quit;                                                       //variable that holds the logic evaluation of key press
-        if((quit = logic("eval_key", NULL)) == ESC || quit == 'x')      //check if user pressed ESC or X
-            break;                                                      //quit loop
     }
-
-    clear(&credits);
-    for(i = 0; i < credsize; i++)
-        free(creds[i]);
-    free(creds);
-    fclose(cred);
-}
+    {
+        Phrase titles = {"Start", "Options", "Credits"};
+        int sizes[] = {5, 7, 7};
+        for(i = 0; i < 3; i++){
+            {
+                IMAGE temp = (IMAGE){titles[i], .d = {sizes[i], 1}};
+                olayOffset(&screen, &temp, (i+1)*screen.width/4 - temp.width/2, screen.height - 3);
+            }
+        }
+    }
+}*/

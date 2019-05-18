@@ -2,26 +2,21 @@
 <CodeBlocks_project_file>
 	<FileVersion major="1" minor="6" />
 	<Project>
-		<Option title="invaders" />
+		<Option title="ascii_invaders" />
 		<Option pch_mode="2" />
 		<Option compiler="gcc" />
 		<Build>
 			<Target title="Debug">
-				<Option output="bin/Debug/invaders" prefix_auto="1" extension_auto="1" />
+				<Option output="bin/ascii_invaders" prefix_auto="1" extension_auto="1" />
 				<Option object_output="obj/Debug/" />
 				<Option type="1" />
 				<Option compiler="gcc" />
 				<Compiler>
 					<Add option="-g" />
-					<Add directory="../libs/ascii_image/" />
 				</Compiler>
-				<Linker>
-					<Add library="D:\#Extra\libs\ascii_image\bin\libascii_image.a" />
-					<Add directory="../libs/ascii_image/" />
-				</Linker>
 			</Target>
 			<Target title="Release">
-				<Option output="bin/Release/invaders" prefix_auto="1" extension_auto="1" />
+				<Option output="bin/Release/ascii_invaders" prefix_auto="1" extension_auto="1" />
 				<Option object_output="obj/Release/" />
 				<Option type="1" />
 				<Option compiler="gcc" />
@@ -36,17 +31,21 @@
 		<Compiler>
 			<Add option="-Wall" />
 		</Compiler>
+		<Unit filename="icon.rc">
+			<Option compilerVar="WINDRES" />
+		</Unit>
+		<Unit filename="list.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="list.h" />
 		<Unit filename="main.c">
 			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="misc.c">
-			<Option compilerVar="CC" />
-		</Unit>
-		<Unit filename="misc.h" />
 		<Extensions>
 			<code_completion />
 			<envvars />
 			<debugger />
+			<lib_finder disable_auto="1" />
 		</Extensions>
 	</Project>
 </CodeBlocks_project_file>
