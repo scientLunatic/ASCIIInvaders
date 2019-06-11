@@ -7,3 +7,22 @@
 1557459549 e:\#extra\asciiinvaders\ascii_invaders\list.h
 	<stdlib.h>
 
+1557449230 source:f:\#extra\asciiinvaders\ascii_invaders\icon.rc
+
+1558444023 source:f:\#extra\asciiinvaders\ascii_invaders\list.c
+	"list.h"
+
+1557459549 f:\#extra\asciiinvaders\ascii_invaders\list.h
+	<stdlib.h>
+
+1560258168 source:f:\#extra\asciiinvaders\ascii_invaders\main.c
+	<stdio.h>
+	<stdlib.h>
+	<string.h>
+	<conio.h>
+	<stdarg.h>
+	<math.h>
+	<time.h>
+	<locale.h>
+	"list.h"
+

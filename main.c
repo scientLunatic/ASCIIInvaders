@@ -5,6 +5,7 @@
 #include <stdarg.h>
 #include <math.h>
 #include <time.h>
+#include <locale.h>
 #include "list.h"
 
 #define PROMPT_WIDTH 80
@@ -16,6 +17,15 @@
 #define SUCCESS 1
 #define FAILURE 0
 #define CAUTION -1
+//difficulty
+#define HARD {settings.color, settings.delay, 0, 1, 60}
+#define NORM {settings.color, settings.delay, 4, 2, 40}
+#define EASY {settings.color, settings.delay, 8, 4, 10}
+//speed
+#define INST {settings.color, 0, settings.enemy_wait, settings.shot_velocity, settings.enemy_number}
+#define FAST {settings.color, 10, settings.enemy_wait, settings.shot_velocity, settings.enemy_number}
+#define MEDI {settings.color, 33, settings.enemy_wait, settings.shot_velocity, settings.enemy_number}
+#define SLOW {settings.color, 100, settings.enemy_wait, settings.shot_velocity, settings.enemy_number}
 
 typedef char* String;
 typedef String Phrase[];
@@ -105,6 +115,7 @@ enum program_states
     SHOWCRED,
     FINISHFL,
     DEBUGFLG,
+    WILDCARD,
     CONTINUE
 };
 
@@ -214,7 +225,8 @@ int gen()
     //while(fgets(inv, 54, f))
     //  printf("%s\n", inv);
     //fclose(f);
-    putc(255, stdout);
+    //putc(255, stdout);
+    display((funPtr)dispSiz, (ViP)&weavPat);
     return FINISHFL;
 }
 
@@ -237,11 +249,11 @@ SPRITE* spawn(String req)
                         sp->i.d = (DIMENSIONS){1, 1};
                         break;
             case 0b10:  sp->i.data = calloc(3, sizeof(char));
-                        strcpy(sp->i.data, "\xd5\xcb\xb8");
                         sp->i.d = (DIMENSIONS){3, 1};
-                        break;
+                        strcpy(sp->i.data, "\xc9\xcb\xbb");//Revert to old sprite once at home, load from file(maybe that'll do the trick).
+                        break;                             //The other part would be to properly use the right code page(which seems to be a problem)
             case 0b100: sp->i.data = calloc(4, sizeof(char));
-                        strcpy(sp->i.data, "\xd6\xc1\xb7");
+                        strcpy(sp->i.data, "\xda\xc1\xbf");
                         sp->i.d = (DIMENSIONS){3, 1};
                         break;
         }
@@ -367,13 +379,13 @@ void dispSiz(IMAGE* img)
     int i, h = min(img->height, PROMPT_HEIGHT),
            w = min(img->width, PROMPT_WIDTH),
         crop = (w < PROMPT_WIDTH);
-    for(i = 0; i < h; i++, crop && putc('\n', stdout))
+    for(i = 0; i < h; i++, (void)(crop && putc('\n', stdout)))
         fprintf(stdout, "%.*s", w, &img->data[i * img->width]);
 }
 
 void loadGame()
 {
-    copyImg(&screen, &noPat);//changing bg means changing hit detection.
+    copyImg(&screen, &noPat);//!changing bg means changing hit detection.
 }
 
 void loadEndLose()
@@ -400,7 +412,7 @@ void loadMenu()
 
 void loadOpti()
 {
-    return;
+    copyImg(&screen, &optScreen);
 }
 
 void showCred()
@@ -433,9 +445,66 @@ void updateOptions(int op)
 
 int options()
 {
-    printflush("Nothing here yet");
-    control(WAITFORINPUT);
-    return LOADMENU;
+    Phrase topics = {"Color", "Difficulty", "Speed"};
+    Phrase diffs = {"Easy", "Normal", "Hard", "Custom"};
+    Phrase speeds = {"Custom", "None", "Fast", "Medium", "Slow"};
+    LIST* colors = new_list();
+    int i, tsizs[] = {5, 10, 5},      tops[3][2], selected = 0,
+           dsizs[] = {4, 6, 4, 6},    difs[4][2],
+           ssizs[] = {6, 4, 4, 6, 4}, spee[5][2],
+           csiz = 0;//handle colors separately since they're dynamic
+
+    for(i = 0; i < 3; i++)
+    {
+        IMAGE temp = (IMAGE){topics[i], .d = {tsizs[i], 1}};
+        olayOffset(&optScreen, &temp, tops[i][0] = ((i*4) + 1) * optScreen.width/10 - temp.width/2, tops[i][1] = 3);
+    }
+
+    {
+        IMAGE back = (IMAGE){"\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff", .d = {8, 4}};
+        olayOffset(&optScreen, &back, 5*optScreen.width/10 - back.width/2, 6);
+        for(i = 0; i < 4; i++)
+        {
+            IMAGE temp = (IMAGE){diffs[i], .d = {dsizs[i], 1}};
+            olayOffset(&optScreen, &temp, difs[i][0] = 5*optScreen.width/10 - temp.width/2, difs[i][1] = 6+i);
+        }
+    }
+
+    {
+        IMAGE back = (IMAGE){"\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff", .d = {8, 5}};
+        olayOffset(&optScreen, &back, 9*optScreen.width/10 - back.width/2, 8);
+        for(i = 0; i < 5; i++)
+        {
+            IMAGE temp = (IMAGE){speeds[i], .d = {ssizs[i], 1}};
+            olayOffset(&optScreen, &temp, spee[i][0] = 9*optScreen.width/10 - temp.width/2, spee[i][1] = 8+i);
+        }
+    }
+
+    {
+        IMAGE back = (IMAGE){"\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff\xff", .d = {8, 10}};
+        olayOffset(&optScreen, &back, optScreen.width/10 - back.width/2, 8);
+    }
+
+    while(1){
+        copyImg(&screen, &optScreen);
+        screen.data[tops[selected][1] * screen.width + tops[selected][0] - 1] = '>';
+        screen.data[tops[selected][1] * screen.width + tops[selected][0] + tsizs[selected]] = '<';
+        display((funPtr)dispSiz, (ViP)&screen);
+        int k;
+        switch(k = control(WAITFORINPUT))
+        {
+            case LEFT  : selected = (selected + 2) % 3; break;
+            case RIGHT : selected = (selected + 1) % 3; break;
+            case ESC   : return LOADMENU;
+            case ENTER :
+                switch(selected)
+                {//stack menu by hierarchy
+                    //case 0: return colopt();
+                    //case 1: selected = difs[];
+                    //case 2: return speopt();
+                }
+        }
+    }
 }
 
 int credits()
@@ -590,6 +659,9 @@ int init()
     loadImg(fopen("files\\border.txt", "rb"), &border, PROMPT_WIDTH, PROMPT_HEIGHT);
     loadImg(fopen("files\\titleScreen.txt", "rb"), &titleScreen, PROMPT_WIDTH, PROMPT_HEIGHT);
     loadImg(fopen("files\\credits.txt", "rb"), &cred, 42,37);
+    copyImg(&optScreen, &weavPat);
+    {IMAGE opt = {"Options", .d = {7, 1}};
+    olayCenter(&optScreen, &opt, 0);}
     updateOptions(LOAD);
 
     setvbuf(stdout, buffer, _IOFBF, sizeof(buffer));
@@ -604,6 +676,7 @@ int finish()
     free(noPat.data);
     free(border.data);
     free(titleScreen.data);
+    free(optScreen.data);
     free(cred.data);
     free(screen.data);
     return EXIT_SUCCESS;
@@ -613,7 +686,6 @@ int main_loop()//rename to control loop?
 {
     int (*context)(void) = init;
     int flag = NONE;
-    //context = gen;
 
     while((flag = context()))
         switch(flag)
@@ -626,6 +698,7 @@ int main_loop()//rename to control loop?
             case DEBUGFLG: printflush("Returning from %s\n", whatFunc(context)); break;
             case SHOWCRED: showCred(); context = credits; break;
             case LOADOPTI: loadOpti(); context = options; break;
+            case WILDCARD: context = gen; break;
             case CONTINUE: break;
             default: printflush("CODING ERROR, UNEXPECTED STATE\n");
             case ERRORFLG: return EXIT_FAILURE;

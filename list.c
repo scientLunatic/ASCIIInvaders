@@ -1,5 +1,5 @@
-#include "list.h"
 
+#include "list.h"
 
 LIST* new_list()
 {
