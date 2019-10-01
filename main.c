@@ -442,7 +442,6 @@ void updateOptions(int op)
             break;
     }
 }
-
 int options()
 {
     Phrase topics = {"Color", "Difficulty", "Speed"};
